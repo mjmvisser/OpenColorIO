@@ -32,7 +32,6 @@ OCIODisplay::OCIODisplay(Node *n) : DD::Image::PixelIop(n)
     m_displayKnob = m_viewKnob = NULL;
     m_gain = 1.0;
     m_gamma = 1.0;
-    m_channel = 2;
     m_transform = OCIO::DisplayTransform::Create();
     
     try
@@ -153,7 +152,6 @@ void OCIODisplay::knobs(DD::Image::Knob_Callback f)
       "A",
       0
     };
-    DD::Image::Enumeration_knob(f, &m_channel, channelvalues, "channel_selector", "channel view");
     DD::Image::SetFlags(f, DD::Image::Knob::NO_ANIMATION | DD::Image::Knob::NO_UNDO);
     DD::Image::Tooltip(f, "Specify which channels to view (prior to the display transform).");
     
@@ -229,9 +227,6 @@ void OCIODisplay::append(DD::Image::Hash& localhash)
         OCIO::ConstContextRcPtr context = getLocalContext();
         std::string configCacheID = config->getCacheID(context);
         localhash.append(configCacheID);
-        
-        // This is required due to our custom channel overlay mode post-processing
-        localhash.append(m_channel);
     }
     catch(OCIO::Exception &e)
     {
@@ -288,55 +283,6 @@ void OCIODisplay::_validate(bool for_real)
             OCIO::ExponentTransformRcPtr cc =  OCIO::ExponentTransform::Create();
             cc->setValue(exponent4f);
             m_transform->setDisplayCC(cc);
-        }
-        
-        // Add Channel swizzling
-        {
-            int channelHot[4] = { 0, 0, 0, 0};
-            
-            switch(m_channel)
-            {
-            case 0: // Luma
-                channelHot[0] = 1;
-                channelHot[1] = 1;
-                channelHot[2] = 1;
-                break;
-            case 1: //  Channel overlay mode. Do rgb, and then swizzle later
-                channelHot[0] = 1;
-                channelHot[1] = 1;
-                channelHot[2] = 1;
-                channelHot[3] = 1;
-                break;
-            case 2: // RGB
-                channelHot[0] = 1;
-                channelHot[1] = 1;
-                channelHot[2] = 1;
-                channelHot[3] = 1;
-                break;
-            case 3: // R
-                channelHot[0] = 1;
-                break;
-            case 4: // G
-                channelHot[1] = 1;
-                break;
-            case 5: // B
-                channelHot[2] = 1;
-                break;
-            case 6: // A
-                channelHot[3] = 1;
-                break;
-            default:
-                break;
-            }
-            
-            float lumacoef[3];
-            config->getDefaultLumaCoefs(lumacoef);
-            float m44[16];
-            float offset[4];
-            OCIO::MatrixTransform::View(m44, offset, channelHot, lumacoef);
-            OCIO::MatrixTransformRcPtr swizzle = OCIO::MatrixTransform::Create();
-            swizzle->setValue(m44, offset);
-            m_transform->setChannelView(swizzle);
         }
         
         OCIO::ConstContextRcPtr context = getLocalContext();
@@ -437,17 +383,6 @@ void OCIODisplay::pixel_engine(
         catch(OCIO::Exception &e)
         {
             error(e.what());
-        }
-        
-        // Hack to emulate Channel overlay mode
-        if(m_channel == 1)
-        {
-            for(int i=0; i<rowWidth; ++i)
-            {
-                rOut[i] = rOut[i] + (1.0f - rOut[i]) * (0.5f * aOut[i]);
-                gOut[i] = gOut[i] - gOut[i] * (0.5f * aOut[i]);
-                bOut[i] = bOut[i] - bOut[i] * (0.5f * aOut[i]);
-            }
         }
     }
 }
