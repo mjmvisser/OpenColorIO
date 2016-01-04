@@ -1,0 +1,1 @@
+CC=gcc412 CXX=g++412 cmake -D CMAKE_INSTALL_PREFIX=/software/ocio -D OCIO_NAMESPACE=FnOpenColorIO ../OpenColorIO
